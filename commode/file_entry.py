@@ -84,7 +84,7 @@ class FileEntry:
                 raise NotCached(self.name)
 
     def _write_cache(self):
-        """Write file entyr data to cache.
+        """Write file entry data to cache.
         Raises NotCacheable if missing file data.
         """
         if self._data is None:
