@@ -1,12 +1,11 @@
-PYTHON=python3.8
 
 venv:
-	${PYTHON} -m venv venv
+	python3 -m venv venv
 	@echo "Now run:"
 	@echo "	source venv/bin/activate"
 
 requirements:
-	${PYTHON} -m pip install --user -r requirements.txt
+	python3 -m pip install -r requirements.txt
 
 lint:
-	pylint louis | tee lint.log
+	pylint commode | tee lint.log
