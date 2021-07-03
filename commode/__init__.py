@@ -1,15 +1,17 @@
 
+import json
 import os
 import shelve
-import json
-from commode.boilerplate import Boilerplate, Files
 from pathlib import Path
-from commode.file_entry import FileEntry
-from commode.server import Server
+
 import click
+
 from commode import common
+from commode.boilerplate import Boilerplate, Files
 from commode.common import bail, debug, warn
 from commode.exceptions import Error
+from commode.file_entry import FileEntry
+from commode.server import Server
 
 
 def run():
