@@ -10,3 +10,15 @@ class NotCached(Error):
 
 class NotCacheable(Error):
     pass
+
+
+class NotFound(Error):
+    pass
+
+
+class BadRequest(Error):
+    pass
+
+
+class PreconditionFailed(Error):
+    pass
