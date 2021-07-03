@@ -7,3 +7,5 @@ Future improvements
 -------------------
 
 If time allows...
+
+* Add verbose information.
