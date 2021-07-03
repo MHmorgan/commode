@@ -4,13 +4,39 @@ interaction.
 """
 
 import shelve
+from collections import namedtuple
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Iterator, Optional, Tuple
 
 from commode import common
 from commode.common import debug, traced
-from commode.exceptions import Error, NotCached, NotCacheable
-from commode.server import BoilerplateData, PreconditionFailed
+from commode.exceptions import Error, NotCached, NotCacheable, PreconditionFailed
+
+BoilerplateData = namedtuple('BoilerplateData', 'etag, modified, files', defaults=[None]*3)
+
+class Files(dict):
+
+    def __init__(self, files: dict):
+
+        # Sanity check
+        if not all(isinstance(k, str) and isinstance(v, str) for k, v in files.items()):
+            raise InvalidBoilerplate('must be a mapping of { "clientfile" : "serverfile" }')
+
+        super().__init__(files)
+
+    def substituted_items(self) -> Iterator[Tuple[str, str]]:
+        """Iterate through the file items, substituting environment
+        variables in for the local file paths first.
+
+        Raises `KeyError` if when encountering a missing environment variable.
+        """
+        from string import Template
+        from os import environ
+
+        for k, v in self.items():
+            tmpl = Template(k)
+            s = tmpl.substitute(environ)
+            yield (s, v)
 
 
 @dataclass
@@ -23,7 +49,7 @@ class Boilerplate:
     _data: Optional[BoilerplateData] = None
 
     @traced
-    def files(self) -> Dict[str, str]:
+    def files(self) -> Files:
         """Return all files referenced by this boilerplate.
         The files are mapping of client-side file path to server-side
         file path.
@@ -38,14 +64,15 @@ class Boilerplate:
         return self._data.files
 
     @traced
-    def update(self, files: Dict[str, str]):
+    def update(self, files: Files):
         """Update the boilerplate files.
         This automatically updates the server side boilerplate as well.
         """
         etag, mod, _ = self._safe_data()
         try:
             common.SERVER.put_boilerplate(self.name, files, etag, mod)
-        except PreconditionFailed:
+        except PreconditionFailed as e:
+            debug(e)
             raise Error(
                 f'{self.name} has been modified on the server since your last access. Try downloading the boilerplate to review the changes.')
         # Update data to match server data
@@ -101,3 +128,8 @@ class Boilerplate:
                 del cache[self.name]
             except KeyError:
                 pass
+
+
+class InvalidBoilerplate(Error):
+    def __init__(self, reason: str) -> None:
+        super().__init__(f'invalid boilerplate: {reason}')

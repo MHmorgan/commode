@@ -6,12 +6,14 @@ import shelve
 from dataclasses import  dataclass
 from pathlib import Path
 from typing import Optional
+from collections import namedtuple
 
 from commode import common
 from commode.common import debug, traced
-from commode.exceptions import Error, NotCached, NotCacheable
-from commode.server import FileData, PreconditionFailed
+from commode.exceptions import Error, NotCached, NotCacheable, PreconditionFailed
 
+
+FileData = namedtuple('FileData', 'etag, modified, content', defaults=[None]*3)
 
 @dataclass
 class FileEntry:
@@ -44,7 +46,8 @@ class FileEntry:
         etag, mod, _ = self._safe_data()
         try:
             common.SERVER.put_file(self.name, content, etag, mod)
-        except PreconditionFailed:
+        except PreconditionFailed as e:
+            debug(e)
             raise Error(
                 f'{self.name} has been modified on the server since your last access. Try downloading the file to review the changes.')
         # Update data to match server data (without requesting content)

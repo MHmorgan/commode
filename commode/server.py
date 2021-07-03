@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 from urllib.parse import ParseResult, urlunparse
 
-from requests import Response, Session
+from requests import Response, Session, ConnectionError
 
 from commode.common import debug, traced
-from commode.exceptions import Error
-
-FileData = namedtuple('FileData', 'etag, modified, content', defaults=[None]*3)
-BoilerplateData = namedtuple('BoilerplateData', 'etag, modified, files', defaults=[None]*3)
+from commode.exceptions import Error, NotFound, PreconditionFailed, BadRequest
+from commode.boilerplate import BoilerplateData, Files
+from commode.file_entry import FileData
 
 
 @dataclass
@@ -31,12 +30,13 @@ class Server:
 
     def _request(self, method: str, url: str, **kwargs) -> Response:
         debug(f'{method.upper()} {url} {kwargs}')
-        if self._session is not None:
-            r = self._session.request(method=method, url=url, **kwargs)
-        else:
-            with Session() as session:
-                r = session.request(method=method, url=url, **kwargs)
-        debug(f'Server response: {r}')
+        with Session() as session:
+            s = self._session or session
+            try:
+                r = s.request(method=method, url=url, **kwargs)
+            except ConnectionError as e:
+                raise Error(f'Server connection error: {e}')
+        debug(f'Server response: {r} {r.headers=}')
         return r
 
     def _url(self, path: str) -> ParseResult:
@@ -53,8 +53,8 @@ class Server:
     @traced
     def get_file(self,
                  name: str,
-                 etag: Optional[str],
-                 modified_since: Optional[str]) -> Optional[FileData]:
+                 etag: Optional[str] = None,
+                 modified_since: Optional[str] = None) -> Optional[FileData]:
         """Retrieve a file from the server. Returns None of the cache is valid
         (determined by `etag` and `modified_since` timestamp).
 
@@ -121,8 +121,8 @@ class Server:
     def put_file(self,
                  name: str,
                  content: str,
-                 etag: Optional[str],
-                 unmodified_since: Optional[str]):
+                 etag: Optional[str] = None,
+                 unmodified_since: Optional[str] = None):
         """Upload a file to the server. `etag` and `unmodified_since` are used
         to conditionally update the file only if the server and client aren't
         out of sync with file content.
@@ -146,7 +146,7 @@ class Server:
         if r.status_code == 400:
             raise BadRequest(r.text)
         if r.status_code == 412:
-            raise PreconditionFailed()
+            raise PreconditionFailed(r.text)
         # Fail early if an unexpected redirect or error code occurs
         if r.status_code >= 300:
             raise Exception(r.text)
@@ -154,8 +154,8 @@ class Server:
     @traced
     def delete_file(self,
                     name: str,
-                    etag: Optional[str],
-                    unmodified_since: Optional[str]):
+                    etag: Optional[str] = None,
+                    unmodified_since: Optional[str] = None):
         """Delete a file from the server. `etag` and `unmodified_since` are used
         to conditionally delete the file only if the server and client aren't
         out of sync with file content.
@@ -183,7 +183,7 @@ class Server:
         if r.status_code == 404:
             raise NotFound(r.text)
         if r.status_code == 412:
-            raise PreconditionFailed()
+            raise PreconditionFailed(r.text)
         # Fail early if an unexpected redirect or error code occurs
         if r.status_code >= 300:
             raise Exception(r.text)
@@ -275,8 +275,8 @@ class Server:
     @traced
     def get_boilerplate(self,
                         name: str,
-                        etag: Optional[str],
-                        modified_since: Optional[str]) -> Optional[BoilerplateData]:
+                        etag: Optional[str] = None,
+                        modified_since: Optional[str] = None) -> Optional[BoilerplateData]:
         """Retrieve a boilerplate from the server. Returns None if the cache is
         valid (determined by `etag` and `modified_since` timestamp).
 
@@ -304,7 +304,7 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-        files = r.json()
+        files = Files(r.json())
         assert isinstance(files, dict)
         return BoilerplateData(
             etag=r.headers['etag'],
@@ -315,9 +315,9 @@ class Server:
     @traced
     def put_boilerplate(self,
                         name: str,
-                        files: Dict[str, str],
-                        etag: Optional[str],
-                        unmodified_since: Optional[str]):
+                        files: Files,
+                        etag: Optional[str] = None,
+                        unmodified_since: Optional[str] = None):
         """Upload a boilerplate to the server. `etag` and `unmodified_since`
         are used to conditionally update the boilerplate only if the server and
         client aren't out of sync.
@@ -341,7 +341,7 @@ class Server:
         if r.status_code == 400:
             raise BadRequest(r.text)
         if r.status_code == 412:
-            raise PreconditionFailed()
+            raise PreconditionFailed(r.text)
         # Fail early if an unexpected redirect or error code occurs
         if r.status_code >= 300:
             raise Exception(r.text)
@@ -349,8 +349,8 @@ class Server:
     @traced
     def delete_boilerplate(self,
                            name: str,
-                           etag: Optional[str],
-                           unmodified_since: Optional[str]):
+                           etag: Optional[str] = None,
+                           unmodified_since: Optional[str] = None):
         """Delete a boilerplate from the server. `etag` and `unmodified_since`
         are used to conditionally delete the boilerplate only if the server and
         client aren't out of sync.
@@ -374,19 +374,7 @@ class Server:
         if r.status_code == 404:
             raise NotFound(r.text)
         if r.status_code == 412:
-            raise PreconditionFailed()
+            raise PreconditionFailed(r.text)
         # Fail early if an unexpected redirect or error code occurs
         if r.status_code >= 300:
             raise Exception(r.text)
-
-
-class NotFound(Error):
-    pass
-
-
-class BadRequest(Error):
-    pass
-
-
-class PreconditionFailed(Error):
-    pass
