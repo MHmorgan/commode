@@ -1,11 +1,10 @@
-from _typeshed import FileDescriptor
+import configparser
 import getpass
 import sys
-from dataclasses import dataclass
-from typing import IO, NoReturn
+from typing import IO, NoReturn, Optional
 from pathlib import Path
 
-import arrow
+# NOTE: Threading is not allowed in the application due to these global variables.
 
 DEBUG: bool = False
 QUIET: bool = False
@@ -19,16 +18,34 @@ LOGERR: IO[str] = None
 USER: str = getpass.getuser()
 HOME: Path = Path.home()
 CACHE_DIR: Path = HOME / '.cache/commode'
-FILES_CACHE: Path = CACHE_DIR / 'files'
-BOILERPLATE_CACHE: Path = CACHE_DIR / 'boilerplates'
-
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-FILES_CACHE.mkdir(exist_ok=True)
-BOILERPLATE_CACHE.mkdir(exist_ok=True)
+
+# Cache files must be `str` to work with shelve
+FILES_CACHE: str = str(CACHE_DIR / 'files')
+BOILERPLATE_CACHE: str = str(CACHE_DIR / 'boilerplates')
+
+SERVER: Optional['Server'] = None
 
 
-class Error(Exception):
-    pass
+################################################################################
+#                                                                              #
+# Config
+#                                                                              #
+################################################################################
+
+CONFIG = configparser.ConfigParser()
+CONFIG_FILE: Path = HOME / '.config/commode.cfg'
+
+(HOME / '.config').mkdir(exist_ok=True)
+CONFIG_FILE.touch(mode=0o600, exist_ok=True)
+
+with CONFIG_FILE.open() as f:
+    CONFIG.read_file(f)
+
+
+def write_config():
+    with CONFIG_FILE.open('w') as f:
+        CONFIG.write(f)
 
 
 ################################################################################
@@ -39,6 +56,7 @@ class Error(Exception):
 
 def timestamp() -> str:
     'Return a log timestamp.'
+    import arrow
     return arrow.now().format('YYYY-MM-DD HH:mm:ss')
 
 
@@ -54,7 +72,6 @@ def log(*args, **kwargs):
     # redirected to a file.
     if QUIET and LOGOUT is None and 'file' not in kwargs:
         return
-    args = (f'[{timestamp()}]', *args)
     kwargs.setdefault('file', LOGOUT or sys.stdout)
     print(*args, **kwargs)
 
@@ -65,7 +82,7 @@ def warn(*args, **kwargs):
     May be redirected by setting the LOGERR global variable, or with a `file=`
     argument.
     '''
-    args = (f'[{timestamp()}]', 'Warning:', *args)
+    args = ('Warning:', *args)
     kwargs.setdefault('file', LOGERR or sys.stderr)
     kwargs.setdefault('flush', True)
     print(*args, **kwargs)
@@ -77,7 +94,7 @@ def error(*args, **kwargs):
     May be redirected by setting the LOGERR global variable, or with a `file=`
     argument.
     '''
-    args = (f'[{timestamp()}]', 'Error:', *args)
+    args = ('Error:', *args)
     kwargs.setdefault('file', LOGERR or sys.stderr)
     kwargs.setdefault('flush', True)
     print(*args, **kwargs)
