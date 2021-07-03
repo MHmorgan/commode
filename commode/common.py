@@ -54,12 +54,6 @@ def write_config():
 #                                                                              #
 ################################################################################
 
-def timestamp() -> str:
-    'Return a log timestamp.'
-    import arrow
-    return arrow.now().format('YYYY-MM-DD HH:mm:ss')
-
-
 def log(*args, **kwargs):
     '''
     Print a log message. Will print to stdout by default.
