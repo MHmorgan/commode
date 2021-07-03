@@ -188,12 +188,11 @@ def boilerplate():
 @click.argument('name')
 def download(name: str):
     'Download a boilerplate'
-    from pprint import pprint
     verify_config()
     with common.SERVER:
         bp = Boilerplate(name)
         files = bp.files()
-    pprint(files)
+    print(json.dumps(files, indent=4))
 
 
 @boilerplate.command()
