@@ -22,3 +22,6 @@ class BadRequest(Error):
 
 class PreconditionFailed(Error):
     pass
+
+class Unauthorized(Error):
+    pass

@@ -8,8 +8,8 @@ import click
 
 from commode import common
 from commode.boilerplate import Boilerplate, Files
-from commode.common import bail, debug, warn
-from commode.exceptions import Error
+from commode.common import bail, debug, error, warn
+from commode.exceptions import Error, Unauthorized
 from commode.file_entry import FileEntry
 from commode.server import Server
 
@@ -17,6 +17,8 @@ from commode.server import Server
 def run():
     try:
         cli()  # pylint: disable=no-value-for-parameter
+    except Unauthorized as e:
+        bail(f'{e} (have you forgotten to configure username and password? See: `commode config --help`)')
     except Error as e:
         bail(e)
     except KeyboardInterrupt:

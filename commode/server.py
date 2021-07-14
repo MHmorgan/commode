@@ -8,7 +8,7 @@ from urllib.parse import ParseResult, urlunparse
 from requests import Response, Session, ConnectionError
 
 from commode.common import debug, traced
-from commode.exceptions import Error, NotFound, PreconditionFailed, BadRequest
+from commode.exceptions import Error, NotFound, PreconditionFailed, BadRequest, Unauthorized
 from commode.boilerplate import BoilerplateData, Files
 from commode.file_entry import FileData
 
@@ -29,6 +29,9 @@ class Server:
         self._session.close()
 
     def _request(self, method: str, url: str, **kwargs) -> Response:
+        """Do a request to the server. This wrapper handles Sessions
+        and some common error conditions.
+        """
         debug(f'{method.upper()} {url} {kwargs}')
         with Session() as session:
             s = self._session or session
@@ -37,6 +40,8 @@ class Server:
             except ConnectionError as e:
                 raise Error(f'Server connection error: {e}')
         debug(f'Server response: {r} {r.headers=}')
+        if r.status_code == 401:
+            raise Unauthorized(r.text)
         return r
 
     def _url(self, path: str) -> ParseResult:
