@@ -65,8 +65,11 @@ def config(server_address, user, password):
         cfg.add_section('server')
 
     if server_address:
+        if not server_address.startswith('http'):
+            bail('Server address should be an URL starting with http or https')
         from urllib.parse import urlparse
         url = urlparse(server_address)
+        debug(f'Parsed server url: {url}')
         cfg.set('server', 'address', url.netloc)
         cfg.set('server', 'scheme', url.scheme or 'https')
     if user:
