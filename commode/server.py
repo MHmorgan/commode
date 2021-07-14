@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from urllib.parse import ParseResult, urlunparse
 
 from requests import Response, Session, ConnectionError
+from commode import common
 
 from commode.common import debug, traced
 from commode.exceptions import Error, NotFound, PreconditionFailed, BadRequest, Unauthorized
@@ -29,12 +30,17 @@ class Server:
         self._session.close()
 
     def _request(self, method: str, url: str, **kwargs) -> Response:
-        """Do a request to the server. This wrapper handles Sessions
-        and some common error conditions.
+        """Do a request to the server. This wrapper handles Sessions,
+        authorization and some common error conditions.
         """
         debug(f'{method.upper()} {url} {kwargs}')
         with Session() as session:
             s = self._session or session
+            if not s.auth:
+                user = common.CONFIG.get('server', 'user', fallback=None)
+                pswd = common.CONFIG.get('server', 'password', fallback=None)
+                if user and pswd:
+                    s.auth = (user, pswd)
             try:
                 r = s.request(method=method, url=url, **kwargs)
             except ConnectionError as e:

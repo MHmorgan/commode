@@ -18,7 +18,7 @@ def run():
     try:
         cli()  # pylint: disable=no-value-for-parameter
     except Unauthorized as e:
-        bail(f'{e} (have you forgotten to configure username and password? See: `commode config --help`)')
+        bail(f'{str(e).strip()} (have you forgotten to configure username and password? See: `commode config --help`)')
     except Error as e:
         bail(e)
     except KeyboardInterrupt:
@@ -47,7 +47,7 @@ def cli(verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disab
     if common.CONFIG_FILE.stat().st_mode & 0o044:
         warn(f'config file ({common.CONFIG_FILE}) is readable by group and others')
 
-    # Setup from config
+    # Setup server session from config
     cfg = common.CONFIG
     if (addr := cfg.get('server', 'address', fallback=None)):
         scheme = cfg.get('server', 'scheme', fallback='https')
