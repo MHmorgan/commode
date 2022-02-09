@@ -147,8 +147,11 @@ def ls(path: str):
     'List directory content on the server'
     verify_config()
     with common.SERVER as srv:
+        srv: Server
         content = srv.get_dir(path)
-    print('\n'.join(sorted(content)))
+    # The content is sorted from the server with directories
+    # first, then files.
+    print('\n'.join(content))
 
 
 @cli.command()
