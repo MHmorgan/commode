@@ -9,7 +9,7 @@ from typing import Optional
 from collections import namedtuple
 
 from commode import common
-from commode.common import debug, traced
+from commode.common import debug
 from commode.exceptions import Error, NotCached, NotCacheable, PreconditionFailed
 
 
@@ -24,7 +24,6 @@ class FileEntry:
     name: str
     _data: Optional[FileData] = None
 
-    @traced
     def content(self) -> str:
         """Return the text content of the file entry.
         This handles any required server interaction.
@@ -38,7 +37,6 @@ class FileEntry:
         assert self._data is not None
         return self._data.content
 
-    @traced
     def update(self, content: str):
         """Update the file content of this entry.
         This automatically updates the server side file entry as well.
@@ -55,7 +53,6 @@ class FileEntry:
         self._data = data._replace(content=content)
         self._write_cache()
 
-    @traced
     def delete(self):
         """Delete the file entry, removing it both on the server
         and from cache.

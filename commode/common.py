@@ -135,15 +135,3 @@ def trace(*args, **kwargs):
     if TRACE:
         args = ('Trace:', *args)
         log(*args, **kwargs)
-
-
-def traced(func):
-    'Decorator for tracing functions and methods.'
-    name = getattr(func, '__qualname__')
-    module = getattr(func, '__module__')
-
-    def wrapper(*args, **kwargs):
-        trace(f'{module}.{name} {args=} {kwargs=}')
-        return func(*args, **kwargs)
-
-    return wrapper

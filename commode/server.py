@@ -8,7 +8,7 @@ from urllib.parse import ParseResult, urlunparse
 from requests import Response, Session, ConnectionError
 from commode import common
 
-from commode.common import debug, traced
+from commode.common import debug
 from commode.exceptions import Error, NotFound, PreconditionFailed, BadRequest, Unauthorized
 from commode.boilerplate import BoilerplateData, Files
 from commode.file_entry import FileData
@@ -61,7 +61,6 @@ class Server:
             fragment=''
         )
 
-    @traced
     def get_file(self,
                  name: str,
                  etag: Optional[str] = None,
@@ -102,7 +101,6 @@ class Server:
             content=r.text
         )
 
-    @traced
     def file_head(self, name: str) -> FileData:
         """Return file data without file content.
 
@@ -128,7 +126,6 @@ class Server:
             modified=r.headers['last-modified'],
         )
 
-    @traced
     def put_file(self,
                  name: str,
                  content: str,
@@ -162,7 +159,6 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-    @traced
     def delete_file(self,
                     name: str,
                     etag: Optional[str] = None,
@@ -199,7 +195,6 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-    @traced
     def get_dir(self, name: str) -> List[str]:
         """Get the content of a directory as a list of entry names.
 
@@ -224,7 +219,6 @@ class Server:
         assert isinstance(content, list)
         return content
 
-    @traced
     def put_dir(self, name: str):
         """Create a directory on the server.
 
@@ -242,7 +236,6 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-    @traced
     def delete_dir(self, name: str):
         """Delete a directory from the server. This will also delete all files
         in this directory and sub-directories.
@@ -266,7 +259,6 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-    @traced
     def get_boilerplate_names(self) -> List[str]:
         """Get a list of names of all boilerplates stored on the server"""
         url = self._url(f'/boilerplates')
@@ -283,7 +275,6 @@ class Server:
         assert isinstance(content, list)
         return content
 
-    @traced
     def get_boilerplate(self,
                         name: str,
                         etag: Optional[str] = None,
@@ -323,7 +314,6 @@ class Server:
             files=files
         )
 
-    @traced
     def put_boilerplate(self,
                         name: str,
                         files: Files,
@@ -357,7 +347,6 @@ class Server:
         if r.status_code >= 300:
             raise Exception(r.text)
 
-    @traced
     def delete_boilerplate(self,
                            name: str,
                            etag: Optional[str] = None,

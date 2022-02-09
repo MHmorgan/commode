@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterator, Optional, Tuple
 
 from commode import common
-from commode.common import debug, traced
+from commode.common import debug
 from commode.exceptions import Error, NotCached, NotCacheable, PreconditionFailed
 
 BoilerplateData = namedtuple('BoilerplateData', 'etag, modified, files', defaults=[None]*3)
@@ -48,7 +48,6 @@ class Boilerplate:
     name: str
     _data: Optional[BoilerplateData] = None
 
-    @traced
     def files(self) -> Files:
         """Return all files referenced by this boilerplate.
         The files are mapping of client-side file path to server-side
@@ -63,7 +62,6 @@ class Boilerplate:
         assert self._data is not None
         return self._data.files
 
-    @traced
     def update(self, files: Files):
         """Update the boilerplate files.
         This automatically updates the server side boilerplate as well.
@@ -79,7 +77,6 @@ class Boilerplate:
         self._data = common.SERVER.get_boilerplate(self.name)
         self._write_cache()
 
-    @traced
     def delete(self):
         """Delete the boilerplate, removing it both on the server
         and from cache.
