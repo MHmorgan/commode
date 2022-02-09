@@ -143,12 +143,18 @@ def delete(file: str):
 
 @cli.command()
 @click.argument('path', required=False, default='')
-def ls(path: str):
+@click.option('-d', '--directories', is_flag=True, help='Only list directories.')
+@click.option('-f', '--files', is_flag=True, help='Only list files.')
+def ls(path: str, directories: bool, files: bool):
     'List directory content on the server'
     verify_config()
     with common.SERVER as srv:
         srv: Server
         content = srv.get_dir(path)
+    if directories:
+        content = [d for d in content if d.endswith('/')]
+    if files:
+        content = [f for f in content if not f.endswith('/')]
     # The content is sorted from the server with directories
     # first, then files.
     print('\n'.join(content))
