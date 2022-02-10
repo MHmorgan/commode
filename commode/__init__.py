@@ -33,7 +33,8 @@ def run():
 @click.option('--log-out', 'logout', type=click.File('w'), help='Redirect log output to file.')
 @click.option('--log-err', 'logerr', type=click.File('w'), help='Redirect log error output to file.')
 @click.option('--log-err2out', 'err2out', is_flag=True, help='Write log errors to normal log output.')
-def cli(verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disable=too-many-arguments
+@click.pass_context
+def cli(ctx, verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disable=too-many-arguments
     'Commode - client for the Cabinet file server.'
     common.DEBUG = debug
     common.QUIET = quiet
@@ -47,11 +48,13 @@ def cli(verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disab
     if common.CONFIG_FILE.stat().st_mode & 0o044:
         warn(f'config file ({common.CONFIG_FILE}) is readable by group and others')
 
+    # TODO: Pass the server as a click object to sub commands
     # Setup server session from config
     cfg = common.CONFIG
     if (addr := cfg.get('server', 'address', fallback=None)):
         scheme = cfg.get('server', 'scheme', fallback='https')
         common.SERVER = Server(address=addr, scheme=scheme)
+        ctx.obj = Server(address=addr, scheme=scheme)
 
 
 @cli.command()
@@ -61,7 +64,7 @@ def cli(verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disab
 def config(server_address, user, password):
     """Configure the client. When no option is provided the current config is printed."""
     cfg = common.CONFIG
-
+    
     # Prepare config sections
     if 'server' not in cfg:
         cfg.add_section('server')
@@ -85,6 +88,22 @@ def config(server_address, user, password):
         print(common.CONFIG_FILE.read_text(), end='')
 
 
+def pass_server(f):
+    '''Decorator for commands that requires a server object.
+    This will perform some sanity checks for the server.
+    '''
+    from functools import update_wrapper
+
+    @click.pass_context
+    def new_func(ctx, *args, **kwargs):
+        srv: Server = ctx.obj
+        if not srv:
+            bail(f'server is not properly configured. Please run: `commode config --server-address <addr>`')
+        return ctx.invoke(f, srv, *args, **kwargs)
+
+    return update_wrapper(new_func, f)
+
+
 def verify_config():
     """Sanity checker ensuring that the server is properly configured before
     performing actions which rely on the server.
@@ -101,10 +120,10 @@ def verify_config():
 
 @cli.command()
 @click.argument('file')
-def download(file: str):
+@pass_server
+def download(srv: Server, file: str):
     'Download a file from the server'
-    verify_config()
-    with common.SERVER:
+    with srv:
         f = FileEntry(file)
         txt = f.content()
     print(txt)
@@ -113,24 +132,24 @@ def download(file: str):
 @cli.command()
 @click.argument('srcfile')
 @click.argument('dstfile')
-def upload(srcfile: str, dstfile: str):
+@pass_server
+def upload(srv: Server, srcfile: str, dstfile: str):
     'Upload a file to the server'
-    verify_config()
     try:
         text = Path(srcfile).read_text()
     except FileNotFoundError:
         bail(f'source file not found: {srcfile}')
-    with common.SERVER:
+    with srv:
         f = FileEntry(dstfile)
         f.update(text)
 
 
 @cli.command()
 @click.argument('file')
-def delete(file: str):
+@pass_server
+def delete(srv: Server, file: str):
     'Delete a file on the server'
-    verify_config()
-    with common.SERVER:
+    with srv:
         f = FileEntry(file)
         f.delete()
 
@@ -145,11 +164,10 @@ def delete(file: str):
 @click.argument('path', required=False, default='')
 @click.option('-d', '--directories', is_flag=True, help='Only list directories.')
 @click.option('-f', '--files', is_flag=True, help='Only list files.')
-def ls(path: str, directories: bool, files: bool):
+@pass_server
+def ls(srv: Server, path: str, directories: bool, files: bool):
     'List directory content on the server'
-    verify_config()
-    with common.SERVER as srv:
-        srv: Server
+    with srv:
         content = srv.get_dir(path)
     if directories:
         content = [d for d in content if d.endswith('/')]
@@ -162,19 +180,19 @@ def ls(path: str, directories: bool, files: bool):
 
 @cli.command()
 @click.argument('path')
-def mkdir(path: str):
+@pass_server
+def mkdir(srv: Server, path: str):
     'Create a directory on the server'
-    verify_config()
-    with common.SERVER as srv:
+    with srv:
         srv.put_dir(path)
 
 
 @cli.command()
 @click.argument('path')
-def rmdir(path: str):
+@pass_server
+def rmdir(srv: Server, path: str):
     'Remove a directory on the server'
-    verify_config()
-    with common.SERVER as srv:
+    with srv:
         srv.delete_dir(path)
 
 
@@ -185,10 +203,10 @@ def rmdir(path: str):
 ################################################################################
 
 @cli.command()
-def boilerplates():
+@pass_server
+def boilerplates(srv: Server):
     'List all boilerplates on the server'
-    verify_config()
-    with common.SERVER as srv:
+    with srv:
         names = srv.get_boilerplate_names()
     print('\n'.join(sorted(names)))
 
@@ -200,10 +218,10 @@ def boilerplate():
 
 @boilerplate.command()
 @click.argument('name')
-def download(name: str):
+@pass_server
+def download(srv: Server, name: str):
     'Download a boilerplate'
-    verify_config()
-    with common.SERVER:
+    with srv:
         bp = Boilerplate(name)
         files = bp.files()
     print(json.dumps(files, indent=4))
@@ -213,13 +231,13 @@ def download(name: str):
 @click.argument('name')
 @click.argument('location', type=click.Path(exists=True, file_okay=False, writable=True))
 @click.option('-f', '--force', is_flag=True, help='Overwrite any existing files during installation.')
-def install(name: str, location: str, force: bool):
+@pass_server
+def install(srv: Server, name: str, location: str, force: bool):
     """Install a boilerplate, downloading and installing all files in
     the boilerplate.
     """
-    verify_config()
     os.chdir(location)
-    with common.SERVER:
+    with srv:
         bp = Boilerplate(name)
         files = bp.files()
         try:
@@ -240,7 +258,8 @@ def install(name: str, location: str, force: bool):
 @click.argument('srcfile', type=click.File())
 @click.argument('name')
 @click.option('--upload-files', is_flag=True, help='Upload all files referenced by the boilerplate before uploading the boilerplate itself.')
-def upload(srcfile, name: str, upload_files: bool):
+@pass_server
+def upload(srv: Server, srcfile, name: str, upload_files: bool):
     """Upload a boilerplate to the server.
     The boilerplate is read from a local file (SRCFILE) which must be a correctly
     formatted JSON boilerplate object.
@@ -258,7 +277,6 @@ def upload(srcfile, name: str, upload_files: bool):
     exist on the server. The --upload-files option may be used to automatically
     upload all files referenced in the boilerplate.
     """
-    verify_config()
 
     try:
         # Sanity checking of the boilerplate is handled by Files
@@ -266,7 +284,7 @@ def upload(srcfile, name: str, upload_files: bool):
     except json.JSONDecodeError as e:
         bail(f'invalid JSON in source file: {e}')
 
-    with common.SERVER:
+    with srv:
         bp = Boilerplate(name)
         if upload_files:
             try:
@@ -286,10 +304,10 @@ def upload(srcfile, name: str, upload_files: bool):
 
 @boilerplate.command()
 @click.argument('name')
-def delete(name: str):
+@pass_server
+def delete(srv: Server, name: str):
     'Delete a boilerplate on the server.'
-    verify_config()
-    with common.SERVER:
+    with srv:
         bp = Boilerplate(name)
         bp.delete()
 
