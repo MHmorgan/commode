@@ -1,8 +1,14 @@
 import configparser
 import getpass
+from multiprocessing import context
+import shelve
 import sys
 from typing import IO, NoReturn, Optional
 from pathlib import Path
+from contextlib import contextmanager
+
+import click
+from click import echo, secho
 
 # NOTE: Threading is not allowed in the application due to these global variables.
 
@@ -20,11 +26,42 @@ HOME: Path = Path.home()
 CACHE_DIR: Path = HOME / '.cache/commode'
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-# Cache files must be `str` to work with shelve
-FILES_CACHE: str = str(CACHE_DIR / 'files')
-BOILERPLATE_CACHE: str = str(CACHE_DIR / 'boilerplates')
+APP_DIR: Path = Path(click.get_app_dir('commode'))
+APP_DIR.mkdir(parents=True, exist_ok=True)
 
-SERVER: Optional['Server'] = None
+class Error(Exception):
+    '''Base class for application errors.'''
+
+
+################################################################################
+#                                                                              #
+# Cache
+#                                                                              #
+################################################################################
+
+# Cache files must be `str` to work with shelve
+FILES_CACHE: str = str(APP_DIR / 'files.cache')
+BOILERPLATE_CACHE: str = str(APP_DIR / 'boilerplates.cache')
+
+
+@contextmanager
+def file_cache():
+    '''Context manager returning a dictionary for the file cache.'''
+    cache = shelve.open(FILES_CACHE)
+    try:
+        yield cache
+    finally:
+        cache.close()
+
+
+@contextmanager
+def boilerplate_cache():
+    '''Context manager returning a dictionary for the boilerplate cache.'''
+    cache = shelve.open(BOILERPLATE_CACHE)
+    try:
+        yield cache
+    finally:
+        cache.close()
 
 
 ################################################################################
@@ -34,9 +71,7 @@ SERVER: Optional['Server'] = None
 ################################################################################
 
 CONFIG = configparser.ConfigParser()
-CONFIG_FILE: Path = HOME / '.config/commode.cfg'
-
-(HOME / '.config').mkdir(exist_ok=True)
+CONFIG_FILE: Path = APP_DIR / 'commode.cfg'
 CONFIG_FILE.touch(mode=0o600, exist_ok=True)
 
 with CONFIG_FILE.open() as f:
@@ -54,84 +89,33 @@ def write_config():
 #                                                                              #
 ################################################################################
 
-def log(*args, **kwargs):
-    '''
-    Print a log message. Will print to stdout by default.
-    May be redirected by setting the LOGOUT global variable, or with a `file=`
-    argument.
-    If the log output is not redirected these messages will be suppressed
-    if QUIET=True, to avoid cluttering stdout.
-    '''
-    # Logs statements should be quiet, unless they are
-    # redirected to a file.
-    if QUIET and LOGOUT is None and 'file' not in kwargs:
-        return
-    kwargs.setdefault('file', LOGOUT or sys.stdout)
-    print(*args, **kwargs)
+def info(msg: str, **kwargs):
+    '''Print an info message.'''
+    kwargs.setdefault('err', True)
+    secho(f'[*] {msg}', **kwargs)
 
 
-def warn(*args, **kwargs):
-    '''
-    Print a warning log message. Will print to stderr by default.
-    May be redirected by setting the LOGERR global variable, or with a `file=`
-    argument.
-    '''
-    args = ('Warning:', *args)
-    kwargs.setdefault('file', LOGERR or sys.stderr)
-    kwargs.setdefault('flush', True)
-    print(*args, **kwargs)
+def warn(msg: str, **kwargs):
+    '''Print a warning message.'''
+    kwargs.setdefault('err', True)
+    kwargs.setdefault('fg', 'yellow')
+    secho(f'[!] {msg}', **kwargs)
 
 
-def error(*args, **kwargs):
-    '''
-    Print an error log message. Will print to stderr by default.
-    May be redirected by setting the LOGERR global variable, or with a `file=`
-    argument.
-    '''
-    args = ('Error:', *args)
-    kwargs.setdefault('file', LOGERR or sys.stderr)
-    kwargs.setdefault('flush', True)
-    print(*args, **kwargs)
+def err(msg: str, **kwargs):
+    '''Print an error message.'''
+    kwargs.setdefault('err', True)
+    kwargs.setdefault('fg', 'red')
+    secho(f'[!!] {msg}', **kwargs)
 
 
-def bail(*args, code: int = 1, **kwargs) -> NoReturn:
-    '''
-    Print an error message as described for `error()`, then exit.
-    Default exit code is 1.
-    '''
-    error(*args, **kwargs)
+def bail(msg: str, *, code: int = 1, **kwargs) -> NoReturn:
+    '''Print an error message and exit.'''
+    err(msg, **kwargs)
     sys.exit(code)
 
 
-def vprint(*args, **kwargs):
-    '''
-    Behaves just like `print()` when VERBOSE=True.
-    Output is suppressed if VERBOSE=False or QUIET=True.
-    If DEBUG=True this is always printed.
-    '''
-    if (VERBOSE and not QUIET) or DEBUG:
-        print(*args, **kwargs)
-
-
-def qprint(*args, **kwargs):
-    '''
-    Quiet printing - will not print if running with QUIET=True.
-    Behaves like `print()` unless suppressed.
-    If DEBUG=True this is always printed.
-    '''
-    if not QUIET or DEBUG:
-        print(*args, **kwargs)
-
-
-def debug(*args, **kwargs):
-    'Print a debug message. Behaves like `log()` when DEBUG=True'
+def debug(msg: str, **kwargs):
+    '''Print an info message if debug is enabled.'''
     if DEBUG:
-        args = ('Debug:', *args)
-        log(*args, **kwargs)
-
-
-def trace(*args, **kwargs):
-    'Print a trace message. Behaves like `log()` when TRACE=True'
-    if TRACE:
-        args = ('Trace:', *args)
-        log(*args, **kwargs)
+        info(msg, **kwargs)

@@ -1,7 +1,5 @@
 
-class Error(Exception):
-    pass
-
+from .common import Error
 
 class NotCached(Error):
     def __init__(self, name: str) -> None:

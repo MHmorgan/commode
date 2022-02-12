@@ -5,16 +5,16 @@ import shelve
 from pathlib import Path
 
 import click
+from click import echo, secho
 
 from commode import common
-from commode.boilerplate import Boilerplate, Files
-from commode.common import bail, debug, error, warn
-from commode.exceptions import Error, Unauthorized
-from commode.file_entry import FileEntry
+from commode.common import bail, debug, err, warn, info
 from commode.server import Server
 
 
 def run():
+    from .exceptions import Error
+    from .server import Unauthorized
     try:
         cli()  # pylint: disable=no-value-for-parameter
     except Unauthorized as e:
@@ -29,19 +29,12 @@ def run():
 @click.option('-v', '--verbose', is_flag=True, help='Be verbose.')
 @click.option('-q', '--quiet', is_flag=True, help='Be quiet.')
 @click.option('--debug', is_flag=True, help='Run with debugging information.')
-@click.option('--trace', is_flag=True, help='Run with debugging and trace information.')
-@click.option('--log-out', 'logout', type=click.File('w'), help='Redirect log output to file.')
-@click.option('--log-err', 'logerr', type=click.File('w'), help='Redirect log error output to file.')
-@click.option('--log-err2out', 'err2out', is_flag=True, help='Write log errors to normal log output.')
 @click.pass_context
-def cli(ctx, verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: disable=too-many-arguments
+def cli(ctx, verbose, quiet, debug):  # pylint: disable=too-many-arguments
     'Commode - client for the Cabinet file server.'
     common.DEBUG = debug
     common.QUIET = quiet
     common.VERBOSE = verbose
-    common.TRACE = trace
-    common.LOGOUT = logout
-    common.LOGERR = common.LOGOUT if err2out else logerr
 
     # Server password are stored in plain text in config file - should warn user if
     # other users are able to read the config file
@@ -53,7 +46,6 @@ def cli(ctx, verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: 
     cfg = common.CONFIG
     if (addr := cfg.get('server', 'address', fallback=None)):
         scheme = cfg.get('server', 'scheme', fallback='https')
-        common.SERVER = Server(address=addr, scheme=scheme)
         ctx.obj = Server(address=addr, scheme=scheme)
 
 
@@ -62,7 +54,7 @@ def cli(ctx, verbose, quiet, debug, trace, logout, logerr, err2out):  # pylint: 
 @click.option('--user', help='Set username for server authentication')
 @click.option('--password', help='Set password for server authentication')
 def config(server_address, user, password):
-    """Configure the client. When no option is provided the current config is printed."""
+    '''Configure the client. When no option is provided the current config is printed.'''
     cfg = common.CONFIG
     
     # Prepare config sections
@@ -88,6 +80,25 @@ def config(server_address, user, password):
         print(common.CONFIG_FILE.read_text(), end='')
 
 
+@cli.command()
+def migrate():
+    '''Migrate between different commode versions.'''
+    from shutil import copy
+
+    #
+    # Migrate config file
+    #
+    old_cfg = Path.home() / '.config/commode.cfg'
+    new_cfg = common.CONFIG_FILE
+    if old_cfg.exists():
+        info(f'Migrating old config file: {old_cfg} → {new_cfg}')
+        if new_cfg.exists():
+            bck = new_cfg.with_name('commode.cfg~')
+            info(f'Creating backup of existing config: {bck}')
+            new_cfg.rename(bck)
+        copy(old_cfg, new_cfg)
+
+
 def pass_server(f):
     '''Decorator for commands that requires a server object.
     This will perform some sanity checks for the server.
@@ -104,14 +115,6 @@ def pass_server(f):
     return update_wrapper(new_func, f)
 
 
-def verify_config():
-    """Sanity checker ensuring that the server is properly configured before
-    performing actions which rely on the server.
-    """
-    if common.SERVER is None:
-        bail(f'server is not properly configured. Please run: `commode config --server-address <addr>`')
-
-
 ################################################################################
 #                                                                              #
 # Files interface
@@ -122,11 +125,10 @@ def verify_config():
 @click.argument('file')
 @pass_server
 def download(srv: Server, file: str):
-    'Download a file from the server'
+    '''Download a file from the server'''
     with srv:
-        f = FileEntry(file)
-        txt = f.content()
-    print(txt)
+        f = srv.get_file(file)
+    echo(f.text, nl=False)
 
 
 @cli.command()
@@ -134,24 +136,22 @@ def download(srv: Server, file: str):
 @click.argument('dstfile')
 @pass_server
 def upload(srv: Server, srcfile: str, dstfile: str):
-    'Upload a file to the server'
+    '''Upload a file to the server'''
     try:
         text = Path(srcfile).read_text()
     except FileNotFoundError:
         bail(f'source file not found: {srcfile}')
     with srv:
-        f = FileEntry(dstfile)
-        f.update(text)
+        srv.put_file(dstfile, text)
 
 
 @cli.command()
 @click.argument('file')
 @pass_server
 def delete(srv: Server, file: str):
-    'Delete a file on the server'
+    '''Delete a file on the server'''
     with srv:
-        f = FileEntry(file)
-        f.delete()
+        srv.delete_file(file)
 
 
 ################################################################################
@@ -166,7 +166,7 @@ def delete(srv: Server, file: str):
 @click.option('-f', '--files', is_flag=True, help='Only list files.')
 @pass_server
 def ls(srv: Server, path: str, directories: bool, files: bool):
-    'List directory content on the server'
+    '''List directory content on the server'''
     with srv:
         content = srv.get_dir(path)
     if directories:
@@ -175,14 +175,14 @@ def ls(srv: Server, path: str, directories: bool, files: bool):
         content = [f for f in content if not f.endswith('/')]
     # The content is sorted from the server with directories
     # first, then files.
-    print('\n'.join(content))
+    echo('\n'.join(content))
 
 
 @cli.command()
 @click.argument('path')
 @pass_server
 def mkdir(srv: Server, path: str):
-    'Create a directory on the server'
+    '''Create a directory on the server'''
     with srv:
         srv.put_dir(path)
 
@@ -191,7 +191,7 @@ def mkdir(srv: Server, path: str):
 @click.argument('path')
 @pass_server
 def rmdir(srv: Server, path: str):
-    'Remove a directory on the server'
+    '''Remove a directory on the server'''
     with srv:
         srv.delete_dir(path)
 
@@ -205,26 +205,25 @@ def rmdir(srv: Server, path: str):
 @cli.command()
 @pass_server
 def boilerplates(srv: Server):
-    'List all boilerplates on the server'
+    '''List all boilerplates on the server'''
     with srv:
         names = srv.get_boilerplate_names()
-    print('\n'.join(sorted(names)))
+    echo('\n'.join(sorted(names)))
 
 
 @cli.group()
 def boilerplate():
-    'Manage boilerplates'
+    '''Manage boilerplates'''
 
 
 @boilerplate.command()
 @click.argument('name')
 @pass_server
 def download(srv: Server, name: str):
-    'Download a boilerplate'
+    '''Download a boilerplate'''
     with srv:
-        bp = Boilerplate(name)
-        files = bp.files()
-    print(json.dumps(files, indent=4))
+        bp = srv.get_boilerplate(name)
+    echo(json.dumps(bp.files, indent=4))
 
 
 @boilerplate.command()
@@ -233,25 +232,20 @@ def download(srv: Server, name: str):
 @click.option('-f', '--force', is_flag=True, help='Overwrite any existing files during installation.')
 @pass_server
 def install(srv: Server, name: str, location: str, force: bool):
-    """Install a boilerplate, downloading and installing all files in
+    '''Install a boilerplate, downloading and installing all files in
     the boilerplate.
-    """
+    '''
+    from .exceptions import Error
     os.chdir(location)
     with srv:
-        bp = Boilerplate(name)
-        files = bp.files()
-        try:
-            items = list(files.substituted_items())
-        except KeyError as e:
-            bail(f'Missing environment variable: {e}')
-        for path, name in items:
-            content = FileEntry(name).content()
-            p = Path(path)
-            if p.exists() and not force:
+        bp = srv.get_boilerplate(name)
+        for path, name in list(bp.substituted_files):
+            file = srv.get_file(name)
+            if path.exists() and not force:
                 raise Error(f'file already exists: {path} (use --force to overwrite)')
-            elif not p.exists():
-                p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content)
+            elif not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(file.text)
 
 
 @boilerplate.command()
@@ -260,7 +254,7 @@ def install(srv: Server, name: str, location: str, force: bool):
 @click.option('--upload-files', is_flag=True, help='Upload all files referenced by the boilerplate before uploading the boilerplate itself.')
 @pass_server
 def upload(srv: Server, srcfile, name: str, upload_files: bool):
-    """Upload a boilerplate to the server.
+    '''Upload a boilerplate to the server.
     The boilerplate is read from a local file (SRCFILE) which must be a correctly
     formatted JSON boilerplate object.
 
@@ -276,30 +270,30 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
     When uploading a boilerplate all files referenced in the boilerplate must
     exist on the server. The --upload-files option may be used to automatically
     upload all files referenced in the boilerplate.
-    """
-
+    '''
+    from .types import Boilerplate
+    #
+    # Decode boilerplate json
+    #
     try:
-        # Sanity checking of the boilerplate is handled by Files
-        files = json.load(srcfile, object_hook=Files)
+        files = json.load(srcfile)
     except json.JSONDecodeError as e:
         bail(f'invalid JSON in source file: {e}')
-
+    bp = Boilerplate(name, files)
+    bp.verify()
+    #
+    # Upload boilerplate and optionally its files
+    #
     with srv:
-        bp = Boilerplate(name)
         if upload_files:
-            try:
-                items = list(files.substituted_items())
-            except KeyError as e:
-                bail(f'Missing environment variable: {e}')
-            for src, dst in items:
-                debug(f'Uploading {src} -> {dst}')
+            for src, dst in bp.substituted_files:
+                debug(f'Uploading {src} → {dst}')
                 try:
                     text = Path(src).read_text()
                 except FileNotFoundError:
                     bail(f'File not found: {src}')
-                f = FileEntry(dst)
-                f.update(text)
-        bp.update(files)
+                srv.put_file(dst, text)
+        srv.put_boilerplate(name, files)
 
 
 @boilerplate.command()
@@ -308,8 +302,7 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
 def delete(srv: Server, name: str):
     'Delete a boilerplate on the server.'
     with srv:
-        bp = Boilerplate(name)
-        bp.delete()
+        srv.delete_boilerplate(name)
 
 
 ################################################################################
@@ -320,13 +313,13 @@ def delete(srv: Server, name: str):
 
 @cli.group()
 def cache():
-    'Inspect and manage cached files and boilerplates.'
+    '''Inspect and manage cached files and boilerplates.'''
 
 
 @cache.command()
 def files():
-    'List all cached files with last modified timestamp and ETAG'
-    with shelve.open(common.FILES_CACHE) as cache:
+    '''List all cached files with last modified timestamp and ETAG'''
+    with common.file_cache() as cache:
         # max() requires at least 1 item
         if len(cache) == 0:
             return
@@ -338,8 +331,8 @@ def files():
 
 @cache.command()
 def boilerplates():
-    'List all cached boilerplates with last modified timestamp and ETAG'
-    with shelve.open(common.BOILERPLATE_CACHE) as cache:
+    '''List all cached boilerplates with last modified timestamp and ETAG'''
+    with common.boilerplate_cache() as cache:
         # max() requires at least 1 item
         if len(cache) == 0:
             return
@@ -351,8 +344,8 @@ def boilerplates():
 
 @cache.command()
 def clear():
-    'Clear entire cache, both for boilerplates and files'
-    with shelve.open(common.FILES_CACHE) as cache:
+    '''Clear entire cache, both for boilerplates and files'''
+    with common.file_cache() as cache:
         cache.clear()
-    with shelve.open(common.BOILERPLATE_CACHE) as cache:
+    with common.boilerplate_cache() as cache:
         cache.clear()
