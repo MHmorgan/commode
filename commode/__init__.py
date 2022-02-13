@@ -214,7 +214,24 @@ def boilerplates(srv: Server):
 
 @cli.group()
 def boilerplate():
-    '''Manage boilerplates'''
+    '''Manage boilerplates.
+    
+    A boilerplate is a json object which maps client file paths to
+    server file paths:
+
+    \b
+        {
+            "$HOME/.vimrc" : "linuxconfig/vimrc",
+            "$HOME/.aliases" : "linuxconfig/aliases"
+        }
+
+    The client file path may contain environment variables, which will
+    be expanded when installing a boilerplate with the `boilerplate install`
+    command.
+
+    Any file used in a boilerplate may be a jinja template - when installing
+    a boilerplate all files are passed through the jinja template rendering.
+    '''
 
 
 @boilerplate.command()
@@ -266,15 +283,6 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
     '''Upload a boilerplate to the server.
     The boilerplate is read from a local file (SRCFILE) which must be a correctly
     formatted JSON boilerplate object.
-
-    The JSON object must be a mapping of client-side file path to
-    server-side path:
-
-    \b
-        {
-            "$HOME/.vimrc" : "linuxconfig/vimrc",
-            "$HOME/.aliases" : "linuxconfig/aliases"
-        }
 
     When uploading a boilerplate all files referenced in the boilerplate must
     exist on the server. The --upload-files option may be used to automatically
