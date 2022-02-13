@@ -41,7 +41,7 @@ class Boilerplate:
             try:
                 s = tmpl.substitute(environ)
             except KeyError as e:
-                raise Error(f'Bad local file path "{k}": {e}')
+                raise Error(f'{k}: unknown environment variable {e}')
             p = Path(s)
             yield (p.expanduser(), v)
 
