@@ -1,5 +1,6 @@
 
 import json
+from logging.config import fileConfig
 import os
 import shelve
 from pathlib import Path
@@ -239,13 +240,21 @@ def install(srv: Server, name: str, location: str, force: bool):
     os.chdir(location)
     with srv:
         bp = srv.get_boilerplate(name)
-        for path, name in list(bp.substituted_files):
-            file = srv.get_file(name)
+
+        def prep(path, name):
+            assert isinstance(path, Path)
             if path.exists() and not force:
                 raise Error(f'file already exists: {path} (use --force to overwrite)')
-            elif not path.exists():
+            elif not path.parent.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(file.text)
+            file = srv.get_file(name)
+            text = render_template(file.name, file.text)
+            return (path, text)
+
+        # Render all templates before writing files to catch any errors
+        # before installing any files.
+        for path, text in [prep(p, n) for p, n in bp.substituted_files]:
+            path.write_text(text)
 
 
 @boilerplate.command()
@@ -349,3 +358,37 @@ def clear():
         cache.clear()
     with common.boilerplate_cache() as cache:
         cache.clear()
+
+
+################################################################################
+#                                                                              #
+# Template
+#                                                                              #
+################################################################################
+
+class TemplateEnv(dict):
+    '''Helper class for working with environment variables in Jinja templates.
+    Used to track which environment variables were accessed in a template,
+    and catch any missing variables.
+    '''
+    def __init__(self, template_name: str, variable_name: str):
+        from os import environ
+        super().__init__(environ)
+        self.tname = template_name
+        self.vname = variable_name
+
+    def __getitem__(self, key: str) -> str:
+        from .common import Error
+        try:
+            return super().__getitem__(key)
+        except KeyError:
+            raise Error(f'Variable referenced in template "{self.tname}" missing: {self.vname}.{key}')
+
+def render_template(name: str, text: str) -> str:
+    '''Render the given text as a jinja template'''
+    from os import environ
+    from jinja2 import Template
+    context = {
+        'ENV': TemplateEnv(name, 'ENV'),
+    }
+    return Template(text).render(context)

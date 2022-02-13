@@ -159,6 +159,12 @@ class Server:
         )
         if r.status_code >= 300:
             raise to_exc(r)
+        #
+        # Update cache
+        #
+        with file_cache() as cache:
+            if name in cache:
+                del cache[name]
 
     def get_dir(self, name: str) -> list[str]:
         '''Get the content of a directory as a list of entry names.'''
@@ -292,6 +298,12 @@ class Server:
         )
         if r.status_code >= 300:
             raise to_exc(r)
+        #
+        # Update cache
+        #
+        with boilerplate_cache() as cache:
+            if name in cache:
+                del cache[name]
 
 
 def to_exc(resp: Response):
