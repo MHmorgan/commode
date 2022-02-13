@@ -9,7 +9,7 @@ import click
 from click import echo, secho
 
 from commode import common
-from commode.common import bail, debug, err, warn, info
+from commode.common import bail, debug, err, verbose, warn, info
 from commode.server import Server
 
 version = '2.0.0'
@@ -249,7 +249,7 @@ def download(srv: Server, name: str):
 
 @boilerplate.command()
 @click.argument('name')
-@click.argument('location', type=click.Path(exists=True, file_okay=False, writable=True))
+@click.argument('location', default='.', type=click.Path(exists=True, file_okay=False, writable=True))
 @click.option('-f', '--force', is_flag=True, help='Overwrite any existing files during installation.')
 @pass_server
 def install(srv: Server, name: str, location: str, force: bool):
@@ -262,9 +262,11 @@ def install(srv: Server, name: str, location: str, force: bool):
         bp = srv.get_boilerplate(name)
 
         def prep(path, name):
+            verbose(f'Preparing file {path}')
             assert isinstance(path, Path)
             if path.exists() and not force:
-                raise Error(f'file already exists: {path} (use --force to overwrite)')
+                warn(f'file already exists: {path} (use --force to overwrite)')
+                return
             elif not path.parent.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
             file = srv.get_file(name)
@@ -273,16 +275,18 @@ def install(srv: Server, name: str, location: str, force: bool):
 
         # Render all templates before writing files to catch any errors
         # before installing any files.
-        for path, text in [prep(p, n) for p, n in bp.substituted_files]:
+        for path, text in [pair for p, n in bp.substituted_files if (pair := prep(p, n))]:
+            info(f'Installing {path}')
             path.write_text(text)
 
 
 @boilerplate.command()
 @click.argument('srcfile', type=click.File())
 @click.argument('name')
-@click.option('--upload-files', is_flag=True, help='Upload all files referenced by the boilerplate before uploading the boilerplate itself.')
+@click.option('--upload-all', is_flag=True, help='Upload all files referenced by the boilerplate before uploading the boilerplate itself.')
+@click.option('--upload-missing', is_flag=True, help='Upload any files referenced by the boilerplate but missing on the server.')
 @pass_server
-def upload(srv: Server, srcfile, name: str, upload_files: bool):
+def upload(srv: Server, srcfile, name: str, upload_all: bool, upload_missing: bool):
     '''Upload a boilerplate to the server.
     The boilerplate is read from a local file (SRCFILE) which must be a correctly
     formatted JSON boilerplate object.
@@ -292,6 +296,7 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
     upload all files referenced in the boilerplate.
     '''
     from .types import Boilerplate
+    from .server import NotFound
     #
     # Decode boilerplate json
     #
@@ -305,14 +310,23 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
     # Upload boilerplate and optionally its files
     #
     with srv:
-        if upload_files:
+        if upload_all or upload_missing:
             for src, dst in bp.substituted_files:
-                debug(f'Uploading {src} → {dst}')
+                if upload_missing:
+                    try:
+                        srv.get_file(dst)
+                    except NotFound:
+                        pass
+                    else:
+                        verbose(f'File already exists: {dst}')
+                        continue
+                verbose(f'Uploading file: {src} → {dst}')
                 try:
                     text = Path(src).read_text()
                 except FileNotFoundError:
                     bail(f'File not found: {src}')
                 srv.put_file(dst, text)
+        verbose(f'Uploading boilerplate {name}…')
         srv.put_boilerplate(name, files)
 
 
@@ -322,6 +336,7 @@ def upload(srv: Server, srcfile, name: str, upload_files: bool):
 def delete(srv: Server, name: str):
     'Delete a boilerplate on the server.'
     with srv:
+        verbose(f'Deleting boilerplate {name}…')
         srv.delete_boilerplate(name)
 
 
