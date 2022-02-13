@@ -1,10 +1,11 @@
 from setuptools import setup
+from commode import version
 
 name='commode'
 
 setup(
    name=name,
-   version='1.0.1',
+   version=version,
    description='Terminal client for Cabinet file server',
    author='Magnus Aa. Hirth',
    author_email='magnus.hirth@gmail.com',
@@ -12,7 +13,8 @@ setup(
    install_requires=[
        'wheel',
        'click',
-       'requests'
+       'requests',
+       'jinja2'
     ],
    scripts=['scripts/commode'],
 )
