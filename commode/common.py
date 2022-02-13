@@ -115,6 +115,12 @@ def bail(msg: str, *, code: int = 1, **kwargs) -> NoReturn:
     sys.exit(code)
 
 
+def verbose(msg: str, **kwargs):
+    '''Print an info message if verbose is enabled.'''
+    if VERBOSE or DEBUG:
+        info(msg, **kwargs)
+
+
 def debug(msg: str, **kwargs):
     '''Print an info message if debug is enabled.'''
     if DEBUG:
