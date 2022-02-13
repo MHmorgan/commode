@@ -1,5 +1,11 @@
-setuptools
-wheel
 click
 requests
 jinja2
+
+# Help with preparing homebrew formula
+# https://github.com/tdsmith/homebrew-pypi-poet
+homebrew-pypi-poet
+
+setuptools
+wheel
+twine
