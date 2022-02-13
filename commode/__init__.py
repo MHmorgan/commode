@@ -12,6 +12,8 @@ from commode import common
 from commode.common import bail, debug, err, warn, info
 from commode.server import Server
 
+version = '2.0.0'
+
 
 def run():
     from .exceptions import Error
@@ -30,6 +32,7 @@ def run():
 @click.option('-v', '--verbose', is_flag=True, help='Be verbose.')
 @click.option('-q', '--quiet', is_flag=True, help='Be quiet.')
 @click.option('--debug', is_flag=True, help='Run with debugging information.')
+@click.version_option(version)
 @click.pass_context
 def cli(ctx, verbose, quiet, debug):  # pylint: disable=too-many-arguments
     'Commode - client for the Cabinet file server.'
